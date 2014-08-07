@@ -36,7 +36,7 @@ int main(int argc, char **argv)
   int pid;               /* process id from fork */
     // Check the argument count. we need 2 <port>
     if(argc != 2){
-		fprintf(stderr,"Needs 2 params\n");
+		fprintf(stderr,"Needs to enter a port\n");
 		exit (EXIT_FAILURE);
 	}
     
