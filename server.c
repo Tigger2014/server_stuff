@@ -34,8 +34,8 @@ int main(int argc, char **argv)
     int wait_status;       /* status from wait */
       
   int pid;               /* process id from fork */
-    // Check the argument count. we need 2 <port> <command>
-    if(argc != 3){
+    // Check the argument count. we need 2 <port>
+    if(argc != 2){
 		fprintf(stderr,"Needs 2 params\n");
 		exit (EXIT_FAILURE);
 	}
