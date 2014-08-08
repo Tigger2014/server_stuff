@@ -1,3 +1,6 @@
+// WARNING! This really isn't smart! and Security through obscurity
+// is no security at all!
+
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -17,23 +20,24 @@ extern char **environ; /* the environment */
 #define BUFSIZE 1024
 // 256 is somewhat of a magic number.
 // 256 = sizeof(char) , 1 byte wide.
-#define MAX_COMMAND_LENGTH 256
+
  
 int main(int argc, char **argv)
 {
-	 FILE *stream;          /* stream version of childfd */
+    FILE *stream;          /* stream version of childfd */
     int childfd;           /* child socket */
     int parentfd;           /* child socket */  
     struct sockaddr_in serveraddr; /* server's addr */
-	struct sockaddr_in clientaddr; /* client addr */
-	char* method=calloc(1,BUFSIZE);  /* request method */
-  char* uri=calloc(1,BUFSIZE);     /* request uri */
-  char* buf=calloc(1,BUFSIZE);     /* message buffer */
-  char* filename=calloc(1,BUFSIZE);     /* request uri */
-   char* version=calloc(1,BUFSIZE);     /* message buffer */
+    struct sockaddr_in clientaddr; /* client addr */
+    char* method=calloc(1,BUFSIZE);  /* request method */
+    char* uri=calloc(1,BUFSIZE);     /* request uri */
+    char* buf=calloc(1,BUFSIZE);     /* message buffer */
+    char* filename=calloc(1,BUFSIZE);     /* request uri */
+    char* const execve_args[1] = { '\0'} ; 
+    char* version=calloc(1,BUFSIZE);     /* message buffer */
     int wait_status;       /* status from wait */
-      
-  int pid;               /* process id from fork */
+    int pid;               /* process id from fork */
+    
     // Check the argument count. we need 2 <port>
     if(argc != 2){
 		fprintf(stderr,"Needs to enter a port\n");
@@ -66,15 +70,14 @@ int main(int argc, char **argv)
 	}
 	// Fuck it lets null terminate the string here because we know we only want only 
 	// want five or less
-	argv[1][port_argument_length]= NULL ;
+	argv[1][port_argument_length]= '\0';
 	
 	
 	
-    // Set up a char with a value of NULL this is the same as char endptr='\0'
-
+	// Set up a char with a value of NULL this is the same as char endptr='\0'
 	char* endptr;
 /********************************** Yeah Baby Time to do some real work ******************/
-    fprintf(stderr,"argv[1] %s %d\n",argv[1],strlen(argv[1]));
+    fprintf(stderr,"argv[1] %s %lu\n",argv[1],strlen(argv[1]));
     // port port unsigned short. 16 bits on every platform. should be safe and portable 
     unsigned short port = (unsigned short)strtoul(argv[1],&endptr,NUMBER_BASE_DECIMAL);
     //fprintf(stderr,"endptr %p",endptr);
@@ -90,28 +93,15 @@ int main(int argc, char **argv)
 		exit (EXIT_FAILURE);
 	}	
 	if(*endptr != '\0'){
-		fprintf(stderr,"String terminator missing, buffer overflows aren't my bag i'm afraid '%d'\n",endptr);
+		fprintf(stderr,"String terminator missing, buffer overflows aren't my bag i'm afraid '%p'\n",endptr);
 		exit (EXIT_FAILURE);
 	}
 	
-	int command_string_length = strnlen(argv[2],MAX_COMMAND_LENGTH) ;
-	
-	
-	if(command_string_length == 0){
-		fprintf(stderr,"Empty String\n");
-		exit (EXIT_FAILURE);
-	}
-	if( command_string_length > MAX_COMMAND_LENGTH){
-		fprintf(stderr,"Not a fucking chance\n");
-		exit (EXIT_FAILURE);
-	}
-    char *command_string = argv[1];
-
    
      /* open socket descriptor */
 	parentfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (parentfd < 0) 
-		fprintf(stderr,"ERROR opening socket");
+		fprintf(stderr,"ERROR opening socket\n");
     
  /* allows us to restart server immediately */
   int optval = 1;
@@ -123,14 +113,18 @@ int main(int argc, char **argv)
   serveraddr.sin_family = AF_INET;
   serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
   serveraddr.sin_port = htons((unsigned short)port);
-  if (bind(parentfd, (struct sockaddr *) &serveraddr, 
-	   sizeof(serveraddr)) < 0) 
-    fprintf(stderr,"ERROR on binding");
-
-  /* get us ready to accept connection requests */
-  if (listen(parentfd, 5) < 0) /* allow 5 requests to queue up */ 
-    fprintf(stderr,"ERROR on listen");
-
+  
+  
+    int bind_result = bind(parentfd, (struct sockaddr *) &serveraddr,sizeof(serveraddr));
+    if ( bind_result < 0) {
+	fprintf(stderr,"Error Cannot bind to socket #%d %s\n",errno,strerror(errno));
+	goto exit_error ;
+    }
+    /* get us ready to accept connection requests */
+    if (listen(parentfd, 5) < 0){ /* allow 5 requests to queue up */ 
+	fprintf(stderr,"Error Cannot listen on port %d #%d %s\n",port,errno,strerror(errno));
+	goto exit_error ;
+    }
   /* 
    * main loop: wait for a connection request, parse HTTP,
    * serve requested content, close connection.
@@ -139,14 +133,15 @@ int main(int argc, char **argv)
     while(1)
     {
 
-		childfd = accept(parentfd, (struct sockaddr *) &clientaddr, &clientlen);
-    if (childfd < 0) 
-      fprintf(stderr,"ERROR on accept");
-    
+    childfd = accept(parentfd, (struct sockaddr *) &clientaddr, &clientlen);
+    if (childfd < 0) {
+      fprintf(stderr,"Error Cannot accept connection from socket #%d %s\n",errno,strerror(errno));
+      goto exit_error ;
+    }
 
     /* open the child socket descriptor as a stream */
 		if ((stream = fdopen(childfd, "r+")) == NULL)
-				fprintf(stderr,"ERROR on fdopen");
+				fprintf(stderr,"ERROR on fdopen\n");
 
     /* get the HTTP request line */
     fgets(buf, BUFSIZE, stream);
@@ -179,7 +174,7 @@ int main(int argc, char **argv)
          childfd socket descriptor */
       pid = fork();
       if (pid < 0) {
-	fprintf(stderr,"ERROR in fork");
+	fprintf(stderr,"ERROR in fork\n");
 	exit(1);
       }
       else if (pid > 0) { /* parent process */
@@ -188,8 +183,8 @@ int main(int argc, char **argv)
       else { /* child  process*/
 	close(0); /* close stdin */
 
-	if (execve(filename, NULL, environ) < 0) {
-	  fprintf(stderr,"ERROR in execve");
+	if (execve(filename,execve_args , environ) < 0) {
+	  fprintf(stderr,"ERROR in execve\n");
 	}
       }
     }
@@ -197,6 +192,12 @@ int main(int argc, char **argv)
 		}
 	}
     //close(childfd);
-    
+exit_error:
+    if(childfd > 0) close(childfd);
+    if(parentfd > 0) close(parentfd);
+    if(method) free(method);
+    if(uri) free(uri);
+    if(buf) free(buf);
+    if(filename) free(filename);
   
 }
